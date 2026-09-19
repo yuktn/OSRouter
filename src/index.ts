@@ -52,8 +52,7 @@ app.post('/v0/messages', async (req: Request<{}, {}, RequestBody>, res: Response
     })}\n\n`
   );
 
-
-  //casting as any is okay here because isModel is stopping mismatched models.
+  //casting as Model<"provider"> is okay here because isModel is stopping mismatched models.
 
   let stream: AsyncGenerator<AgentEvent>;
 
