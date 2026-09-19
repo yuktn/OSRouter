@@ -1,4 +1,5 @@
 export type AgentEvent =
+    | { type: "connected" }  
     | { type: "request_received" }
     | { type: "finish" }
     | { type: "thinking_start" }

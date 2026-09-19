@@ -20,10 +20,14 @@ interface RequestBody {
 }
 
 app.get('/health', (req: Request, res: Response) => {
-  res.json({ message: 'Up and running!' });
+  const uptimeInSeconds = process.argv ? process.uptime() : 0;
+  res.json({
+    status: 'UP',
+    uptime_seconds: Math.floor(process.uptime())
+  });
 });
 
-app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response) => {
+app.post('/v0/messages', async (req: Request<{}, {}, RequestBody>, res: Response) => {
 
   const { provider, model, input, tools } = req.body;
 
@@ -35,7 +39,7 @@ app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response
     return res.status(400).json({ error: 'Provider and model do not match or no such model.' })
   }
 
-  //header for SSE (check https://github.com/Azure/fetch-event-source for sending POST requests using SSE. )
+  //header for SSE (check https://github.com/Azure/fetch-event-source for sending POST requests using SSE, or you can implement it yourself.)
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -53,13 +57,12 @@ app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response
 
   let stream: AsyncGenerator<AgentEvent>;
 
-
   switch (provider) {
     case "openai":
-      stream = openAiMessage(model as any, input, tools);
+      stream = openAiMessage(model as Model<"openai">, input, tools);
       break;
     case "anthropic":
-      stream = anthropicMessage(model as any, input, tools);
+      stream = anthropicMessage(model as Model<"anthropic">, input, tools);
       break;
   }
 

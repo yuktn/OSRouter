@@ -45,6 +45,13 @@ export async function* openAiMessage(
             return message.content.map((content): ResponseInputItem => {
                 switch (content.type) {
                     case "text":
+                        if (message.role === "assistant") {
+                            return {
+                                type: "message",
+                                role: "assistant",
+                                content: content.text,
+                            };
+                        }
                         return {
                             type: "message",
                             role: message.role,

@@ -1,11 +1,11 @@
-//Simple REPL for testing purposes. Thanks ChatGPT!
+//Simple REPL for testing purposes. Thanks Codex!
 
 import "dotenv/config";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-import { openAiMessage } from "./providers/openai.js";
-import { anthropicMessage } from "./providers/anthropic.js";
+import type { AgentEvent } from "./types/events.js";
 
 import type {
     Provider,
@@ -142,59 +142,81 @@ Commands:
 /* Request                                                                    */
 /* -------------------------------------------------------------------------- */
 
+const API_URL = new URL(
+    "/v1/messages",
+    process.env.OSROUTER_BASE_URL || `http://localhost:${process.env.PORT || 8080}`,
+);
+
+// fetch-event-source uses browser globals during cleanup even with visibility
+// handling disabled. Supply only the hooks it needs in this Node-only REPL.
+Object.defineProperties(globalThis, {
+    window: { value: { setTimeout, clearTimeout }, configurable: true },
+    document: { value: { removeEventListener() {} }, configurable: true },
+});
+
 async function runMessage() {
     let assistantText = "";
+    let finished = false;
 
-    if (provider === "openai") {
-        const stream = openAiMessage(
-            selectedModels.openai,
-            messages,
+    await fetchEventSource(API_URL.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            provider,
+            model: getCurrentModel(),
+            input: messages,
             tools,
-        );
-
-        for await (const event of stream) {
-            if (event.type === "text_delta") {
-                stdout.write(event.text);
-                assistantText += event.text;
+        }),
+        fetch: globalThis.fetch,
+        openWhenHidden: true,
+        async onopen(response) {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
             }
-
-            if (event.type === "tool_call") {
-                console.log();
-                console.log();
-                console.log("[tool_call]");
-                console.log(`id:   ${event.callId}`);
-                console.log(`name: ${event.name}`);
-                console.log(`args: ${event.arguments}`);
+            if (!response.headers.get("content-type")?.startsWith("text/event-stream")) {
+                throw new Error("API did not return an SSE stream.");
             }
-        }
-    } else {
-        const stream = anthropicMessage(
-            selectedModels.anthropic,
-            messages,
-            tools,
-        );
-
-        for await (const event of stream) {
-            if (event.type === "text_delta") {
-                stdout.write(event.text);
-                assistantText += event.text;
+            if (!response.body) {
+                throw new Error("API returned no response stream.");
             }
+        },
+        onmessage(message) {
+            if (!message.data || finished) return;
+            const event = JSON.parse(message.data) as AgentEvent;
 
-            if (event.type === "tool_call") {
-                console.log();
-                console.log();
-                console.log("[tool_call]");
-                console.log(`id:   ${event.callId}`);
-                console.log(`name: ${event.name}`);
-                console.log(`args: ${event.arguments}`);
+            switch (event.type) {
+                case "text_delta":
+                    stdout.write(event.text);
+                    assistantText += event.text;
+                    break;
+                case "tool_call":
+                    console.log("\n\n[tool_call]");
+                    console.log(`id:   ${event.callId}`);
+                    console.log(`name: ${event.name}`);
+                    console.log(`args: ${event.arguments}`);
+                    break;
+                case "error":
+                    throw new Error(event.error);
+                case "finish":
+                    finished = true;
+                    break;
             }
-        }
-    }
+        },
+        onclose() {
+            if (!finished) {
+                throw new Error("API stream ended before the finish event.");
+            }
+        },
+        onerror(error) {
+            // Retrying a generation POST could duplicate output and API charges.
+            throw error;
+        },
+    });
 
     if (assistantText.length > 0) {
         messages.push({
             role: "assistant",
-            content: assistantText,
+            content: [{ type: "text", text: assistantText }],
         });
     }
 }
@@ -453,7 +475,7 @@ async function main() {
 
         messages.push({
             role: "user",
-            content: line,
+            content: [{ type: "text", text: line }],
         });
 
         stdout.write("\nassistant: ");

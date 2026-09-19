@@ -3,10 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
     MessageParam,
     ContentBlockParam,
-    ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import { type Tool } from "../types/tool.js"
-import type { Provider, Model } from '../types/ProviderModels.js'
+import type { Model } from '../types/ProviderModels.js'
 import type { ChatMessage } from "../types/message.js";
 import { type AgentEvent } from "../types/events.js";
 
@@ -29,6 +28,63 @@ function toAnthropicTool(tool: Tool) {
     };
 }
 
+export function toAnthropicInput(input: ChatMessage[]): {
+    system?: string;
+    messages: MessageParam[];
+} {
+    const instructions: string[] = [];
+    const messages: MessageParam[] = [];
+
+    for (const message of input) {
+        if (message.role === "system" || message.role === "developer") {
+            const text = message.content.map(content => {
+                if (content.type !== "text") {
+                    throw new Error("System and developer messages must contain only text.");
+                }
+                return content.text;
+            }).join("\n\n");
+            instructions.push(text);
+            continue;
+        }
+
+        const content = message.content.map((block): ContentBlockParam => {
+            switch (block.type) {
+                case "text":
+                    return { type: "text", text: block.text };
+                case "tool_call":
+                    if (message.role !== "assistant") {
+                        throw new Error("Tool calls must belong to assistant messages.");
+                    }
+                    return {
+                        type: "tool_use",
+                        id: block.id,
+                        name: block.name,
+                        input: block.arguments,
+                    };
+                case "tool_result":
+                    if (message.role !== "user") {
+                        throw new Error("Tool results must belong to user messages.");
+                    }
+                    return {
+                        type: "tool_result",
+                        tool_use_id: block.toolCallId,
+                        content: typeof block.result === "string"
+                            ? block.result
+                            : JSON.stringify(block.result) ?? "null",
+                        ...(block.isError !== undefined
+                            ? { is_error: block.isError }
+                            : {}),
+                    };
+            }
+        });
+
+        messages.push({ role: message.role, content });
+    }
+
+    const system = instructions.join("\n\n");
+    return { ...(system ? { system } : {}), messages };
+}
+
 export async function* anthropicMessage(
     model: Model<"anthropic">,
     input: ChatMessage[],
@@ -39,13 +95,7 @@ export async function* anthropicMessage(
 
     const anthropicTools: Anthropic.Messages.Tool[] = []
 
-    const system = input
-        .filter(message => message.role === "developer")
-        .map(message => message.content)
-        .join("\n\n")
-
-    const messages = input
-        .filter(message => message.role !== "developer") as MessageParam[]
+    const { system, messages } = toAnthropicInput(input);
 
     for (const tool of tools) {
         const convertedTool = toAnthropicTool(tool)
