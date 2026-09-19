@@ -25,8 +25,6 @@ app.get('/health', (req: Request, res: Response) => {
 
 app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response) => {
 
-  res.write(`data: Connected to server\n\n`);
-
   const { provider, model, input, tools } = req.body;
 
   if (!isProvider(provider)) {
@@ -44,6 +42,12 @@ app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response
 
   res.flushHeaders();
 
+  res.write(
+    `data: ${JSON.stringify({
+      type: "connected"
+    })}\n\n`
+  );
+
 
   //casting as any is okay here because isModel is stopping mismatched models.
 
@@ -58,7 +62,7 @@ app.post('/v1/messages', async (req: Request<{}, {}, RequestBody>, res: Response
       stream = anthropicMessage(model as any, input, tools);
       break;
   }
-  
+
   for await (const event of stream) {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   }
