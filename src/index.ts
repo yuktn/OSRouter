@@ -10,13 +10,6 @@ import { type AgentEvent } from './types/events.js';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-function writeSSE(
-  res: Response,
-  event: AgentEvent
-) {
-  res.write(`data: ${JSON.stringify(event)}\n\n`);
-}
-
 app.use(express.json());
 
 interface RequestBody {
