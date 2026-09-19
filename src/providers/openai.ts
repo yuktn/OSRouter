@@ -5,6 +5,11 @@ import type { Provider, Model } from '../types/ProviderModels.js'
 import type { ChatMessage } from "../types/message.js";
 import { type AgentEvent } from "../types/events.js";
 
+import type {
+    ResponseInputItem
+} from "openai/resources/responses/responses";
+
+
 const openAIClient = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
@@ -33,6 +38,45 @@ export async function* openAiMessage(
 
     yield { type: "request_received" }
 
+    function toOpenAIInput(
+        messages: ChatMessage[]
+    ): ResponseInputItem[] {
+        return messages.flatMap((message): ResponseInputItem[] => {
+            return message.content.map((content): ResponseInputItem => {
+                switch (content.type) {
+                    case "text":
+                        return {
+                            type: "message",
+                            role: message.role,
+                            content: [
+                                {
+                                    type: "input_text",
+                                    text: content.text,
+                                },
+                            ],
+                        };
+
+                    case "tool_call":
+                        return {
+                            type: "function_call",
+                            call_id: content.id,
+                            name: content.name,
+                            arguments: JSON.stringify(content.arguments),
+                        };
+
+                    case "tool_result":
+                        return {
+                            type: "function_call_output",
+                            call_id: content.toolCallId,
+                            output:
+                                typeof content.result === "string"
+                                    ? content.result
+                                    : JSON.stringify(content.result),
+                        };
+                }
+            });
+        });
+    }
     const openAiTools: OpenAI.Responses.FunctionTool[] = []
 
     for (const tool of tools) {
@@ -42,7 +86,7 @@ export async function* openAiMessage(
 
     const stream = await openAIClient.responses.create({
         model,
-        input,
+        input: toOpenAIInput(input),
         tools: openAiTools,
         stream: true
     });
