@@ -1,4 +1,7 @@
-# OSRouter
+<p align="center">
+  <img src="./docs/OSRouter-Heavy-Light.svg" alt="OSRouter logo" width="400">
+</p>
+
 
 ## Description
 
