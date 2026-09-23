@@ -2,7 +2,7 @@
 
 ## Description
 
-OSRouter is a model/provider agnostic API endpoint.  
+OSRouter is a model and provider agnostic LLM API Gateway.  
 
 It standardizes inputs in custom types to maximize compatibility between providers.  
 
