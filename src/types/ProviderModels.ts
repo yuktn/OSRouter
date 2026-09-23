@@ -1,3 +1,5 @@
+import * as z from "zod";
+
 export const providerModels = {
     openai: [
         "gpt-5.6-sol",
@@ -11,26 +13,32 @@ export const providerModels = {
     ],
 } as const;
 
-export type Provider = keyof typeof providerModels;
+export const ModelSchemas = z.object({
+    openai: z.enum(providerModels.openai),
+    anthropic: z.enum(providerModels.anthropic),
+});
+
+export const ProviderSchema = ModelSchemas.keyof();
+
+export const AnyModelSchema = z.union([
+    ModelSchemas.shape.openai,
+    ModelSchemas.shape.anthropic,
+]);
+
+export type Provider = z.infer<typeof ProviderSchema>;
 
 export type Model<P extends Provider> =
-    typeof providerModels[P][number];
+    z.infer<(typeof ModelSchemas.shape)[P]>;
 
-export type AnyModel = Model<Provider>;
+export type AnyModel = z.infer<typeof AnyModelSchema>;
 
 export function isProvider(value: unknown): value is Provider {
-    return (
-        typeof value === "string" &&
-        value in providerModels
-    );
+    return ProviderSchema.safeParse(value).success;
 }
 
 export function isModel<P extends Provider>(
     provider: P,
     value: unknown
 ): value is Model<P> {
-    return (
-        typeof value === "string" &&
-        (providerModels[provider] as readonly string[]).includes(value)
-    );
+    return ModelSchemas.shape[provider].safeParse(value).success;
 }

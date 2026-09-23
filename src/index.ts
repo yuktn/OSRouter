@@ -1,8 +1,8 @@
 import express, { type Request, type Response } from 'express';
-import { type Provider, type Model, isProvider, isModel } from './types/ProviderModels.js'
+import { type Provider, type Model, isProvider, isModel, ProviderSchema, AnyModelSchema } from './types/ProviderModels.js'
 import * as z from 'zod';
-import type { ChatMessage } from './types/message.js';
-import type { Tool } from './types/tool.js'
+import { ChatMessageSchema, type ChatMessage } from './types/message.js';
+import { ToolSchema, type Tool } from './types/tool.js'
 import { openAiMessage } from './providers/openai.js';
 import { anthropicMessage } from './providers/anthropic.js';
 import { type AgentEvent } from './types/events.js';
@@ -12,25 +12,33 @@ const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
 
-interface RequestBody {
-  provider: Provider;
-  model: Model<Provider>;
-  input: ChatMessage[]
-  tools: Tool[]
-}
+
+const RequestBodySchema = z.object({
+  provider: ProviderSchema,
+  model: AnyModelSchema,
+  input: ChatMessageSchema.array(),
+  tools: ToolSchema.array()
+})
+
+type RequestBody = z.infer<typeof RequestBodySchema>;
 
 app.get('/health', (req: Request, res: Response) => {
-  const uptimeInSeconds = process.argv ? process.uptime() : 0;
   res.json({
     status: 'UP',
     uptime_seconds: Math.floor(process.uptime())
   });
 });
 
-app.post('/v0/messages', async (req: Request<{}, {}, RequestBody>, res: Response) => {
+app.post('/v0/messages', async (req: Request<{}, {}, unknown>, res: Response) => {
 
-  const { provider, model, input, tools } = req.body;
+  const result = RequestBodySchema.safeParse(req.body);
 
+  if (!result.success) {
+    return res.status(400).json({ error: 'Bad request.' })
+  }
+
+  const { provider, model, input, tools } = result.data;
+  
   if (!isProvider(provider)) {
     return res.status(400).json({ error: 'No such provider.' });
   }
@@ -52,24 +60,41 @@ app.post('/v0/messages', async (req: Request<{}, {}, RequestBody>, res: Response
     })}\n\n`
   );
 
-  //casting as Model<"provider"> is okay here because isModel is stopping mismatched models.
+  try {
 
-  let stream: AsyncGenerator<AgentEvent>;
+    //casting as Model<"provider"> is okay here because isModel is stopping mismatched models.
 
-  switch (provider) {
-    case "openai":
-      stream = openAiMessage(model as Model<"openai">, input, tools);
-      break;
-    case "anthropic":
-      stream = anthropicMessage(model as Model<"anthropic">, input, tools);
-      break;
+    let stream: AsyncGenerator<AgentEvent>;
+
+    switch (provider) {
+      case "openai":
+        stream = openAiMessage(model as Model<"openai">, input, tools);
+        break;
+      case "anthropic":
+        stream = anthropicMessage(model as Model<"anthropic">, input, tools);
+        break;
+    }
+
+    for await (const event of stream) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+  } catch (e) {
+    console.error(e);
+
+    const message =
+      e instanceof Error
+        ? e.message
+        : String(e);
+
+    res.write(
+      `data: ${JSON.stringify({
+        type: "error",
+        error: message
+      } satisfies AgentEvent)}\n\n`
+    );
+  } finally {
+    res.end()
   }
-
-  for await (const event of stream) {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  }
-
-  res.end()
 })
 
 app.listen(PORT, () => {

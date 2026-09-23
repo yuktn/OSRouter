@@ -143,7 +143,7 @@ Commands:
 /* -------------------------------------------------------------------------- */
 
 const API_URL = new URL(
-    "/v1/messages",
+    "/v0/messages",
     process.env.OSROUTER_BASE_URL || `http://localhost:${process.env.PORT || 8080}`,
 );
 
