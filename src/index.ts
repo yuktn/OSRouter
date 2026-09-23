@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import express, { type Request, type Response } from 'express';
 import { type Provider, type Model, isProvider, isModel, ProviderSchema, AnyModelSchema } from './types/ProviderModels.js'
 import * as z from 'zod';
@@ -7,8 +9,6 @@ import { openAiMessage } from './providers/openai.js';
 import { anthropicMessage } from './providers/anthropic.js';
 import { type AgentEvent } from './types/events.js';
 import {auth} from "./middleware/auth.js"
-
-import "dotenv/config";
 
 const app = express();
 const PORT = process.env.PORT || 8080;

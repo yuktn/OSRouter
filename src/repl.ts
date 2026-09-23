@@ -151,7 +151,7 @@ const API_URL = new URL(
 // handling disabled. Supply only the hooks it needs in this Node-only REPL.
 Object.defineProperties(globalThis, {
     window: { value: { setTimeout, clearTimeout }, configurable: true },
-    document: { value: { removeEventListener() {} }, configurable: true },
+    document: { value: { removeEventListener() { } }, configurable: true },
 });
 
 async function runMessage() {
@@ -160,7 +160,9 @@ async function runMessage() {
 
     await fetchEventSource(API_URL.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OSROUTER_API_KEY}`,
+        },
         body: JSON.stringify({
             provider,
             model: getCurrentModel(),
