@@ -6,11 +6,18 @@ import { ToolSchema, type Tool } from './types/tool.js'
 import { openAiMessage } from './providers/openai.js';
 import { anthropicMessage } from './providers/anthropic.js';
 import { type AgentEvent } from './types/events.js';
+import {auth} from "./middleware/auth.js"
+
+import "dotenv/config";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(express.json());
+if (!process.env.OSROUTER_API_KEY) {
+  throw new Error("No API key provided")
+}
+
+app.use(express.json({ limit: "1mb" }));
 
 
 const RequestBodySchema = z.object({
@@ -29,7 +36,7 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-app.post('/v0/messages', async (req: Request<{}, {}, unknown>, res: Response) => {
+app.post('/v0/messages', auth, async (req: Request<{}, {}, unknown>, res: Response) => {
 
   const result = RequestBodySchema.safeParse(req.body);
 
